@@ -1,11 +1,3 @@
-/* VmarkerGUI by Robin Theunis 
- * 2011-2012 
- * For use with the vmarker IR sensor */
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this file,
- * You can obtain one at http://mozilla.org/MPL/2.0/. */
-
 #include "vmarkergui.h"
 #include "ui_vmarkergui.h"
 #include "vmarker.h"
@@ -20,6 +12,7 @@
 #include <qmath.h>
 #include <QGraphicsSimpleTextItem>
 #include <QMessageBox>
+#include <QtConcurrentRun>
 
 VmarkerGUI::VmarkerGUI(QWidget *parent) : QMainWindow(parent), ui(new Ui::VmarkerGUI)
 {
@@ -97,6 +90,9 @@ VmarkerGUI::VmarkerGUI(QWidget *parent) : QMainWindow(parent), ui(new Ui::Vmarke
     //SETTING MAC
     connect(ui->chkAppleMac,SIGNAL(clicked()),this,SLOT(writeSetMac()));
 
+    //SETTING KEYBOARD
+    connect(ui->cobKeyboardMode,SIGNAL(currentIndexChanged(int)),this,SLOT(writeKeyboard(int)));
+    connect(ui->chkKeyBoard,SIGNAL(clicked()),this,SLOT(writeEnKeyboard()));
     //SAVE
     connect(ui->btnSave,SIGNAL(clicked()),this,SLOT(saveEeprom()));
 
@@ -109,6 +105,11 @@ VmarkerGUI::VmarkerGUI(QWidget *parent) : QMainWindow(parent), ui(new Ui::Vmarke
     this->scene.addItem(&numbers_3);
     this->scene.addItem(&numbers_4);
     this->scene.addItem(&polygonitem);
+    //this->scene.addItem(&circle);
+    this->updateCalScreen = 1;
+    this->futureUpdate = QtConcurrent::run(this,&VmarkerGUI::updateLiveTH);
+    ui->lblCalStatus->setText("Not connected");
+
 }
 
 VmarkerGUI::~VmarkerGUI()
@@ -127,6 +128,7 @@ VmarkerGUI::~VmarkerGUI()
     delete ui;
 }
 void VmarkerGUI::DisConnected(){
+    ui->lblCalStatus->setText("Not connected");
     this->livetimer->stop();
     ui->grpCalibration->setEnabled(false);
     ui->grpCommon->setEnabled(false);
@@ -134,6 +136,8 @@ void VmarkerGUI::DisConnected(){
     ui->grpLive->setEnabled(false);
     ui->btnCalibrate->setEnabled(false);
     ui->btnSave->setEnabled(false);
+    ui->cobKeyboardMode->setEnabled(true);
+
     ui->graphicsView->hide();
 }
 
@@ -177,6 +181,39 @@ void VmarkerGUI::Connected(){
 
     _vmarker->readreg(REG_MAC_Y_RATIO,&data);
     ui->chkAppleMac->setChecked(data==85);
+
+    _vmarker->readreg(REG_KEYBOARD,&data);
+    ui->cobKeyboardMode->setCurrentIndex(data);
+
+    _vmarker->readreg(REG_ENKEYBOARD,&data);
+    ui->chkKeyBoard->setChecked(data!=0);
+    if(ui->chkKeyBoard->isChecked()){
+        ui->cobKeyboardMode->setEnabled(true);
+    }else{
+        ui->cobKeyboardMode->setEnabled(false);
+    }
+}
+
+void VmarkerGUI::writeKeyboard(int val){
+    uint16_t data = val;
+
+    this->saveToEeprom = true;
+    _vmarker->writereg(REG_KEYBOARD,&data);
+}
+
+void VmarkerGUI::writeEnKeyboard(){
+
+    uint16_t itrue = 0x01;
+    uint16_t ifalse = 0x00;
+    this->saveToEeprom = true;
+    if(ui->chkKeyBoard->isChecked()){
+        ui->cobKeyboardMode->setEnabled(true);
+        _vmarker->writereg(REG_ENKEYBOARD, &(itrue));
+    }else{
+        ui->cobKeyboardMode->setEnabled(false);
+        _vmarker->writereg(REG_ENKEYBOARD, &(ifalse));
+    }
+
 }
 
 void VmarkerGUI::writeCalSize(){
@@ -262,6 +299,11 @@ void VmarkerGUI::writeSetMac(){
     }
 }
 
+void VmarkerGUI::updateLiveTH(){
+
+
+}
+
 void VmarkerGUI::updateLive()
 {
     uint16_t data = 0;
@@ -275,70 +317,99 @@ void VmarkerGUI::updateLive()
 
     unsigned char state, point;
     _vmarker->getMouseState(&state,&point);
-    if(state == 2){
-        ui->lblCalPoint->setText("P" + QString::number(point+1));
-        ui->lblCalStatus->setText("Calibration running");
+    if(_vmarker->productID == 0x8003){
+        if(state == 6){
+            ui->lblCalPoint->setText("P" + QString::number(point+1));
+            ui->lblCalStatus->setText("Calibration running");
+        }else{
+            ui->lblCalPoint->setText(" ");
+        }
+        if(state == 5){
+            ui->lblCalStatus->setText("Calibration started");
+        }
+        if(state == 2){
+           ui->lblCalStatus->setText("Mouse Running");
+        }
+        if(state == 3){
+           ui->lblCalStatus->setText("Multitouch Running");
+        }
+        if(state == 1){
+           ui->lblCalStatus->setText("Vmarker Ready");
+        }
     }else{
-        ui->lblCalPoint->setText(" ");
-    }
-    if(state == 1){
-       ui->lblCalStatus->setText("Calibration OK");
-    }
-    int points[8] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
-    _vmarker->readreg(REG_CAL_X1,&data);
-    points[0] = data*200/1024;
-    _vmarker->readreg(REG_CAL_Y1,&data);
-    points[1] = data*150/1024;
-    _vmarker->readreg(REG_CAL_X2,&data);
-    points[2] = data*200/1024;
-    _vmarker->readreg(REG_CAL_Y2,&data);
-    points[3] = data*150/1024;
-    _vmarker->readreg(REG_CAL_X3,&data);
-    points[4] = data*200/1024;
-    _vmarker->readreg(REG_CAL_Y3,&data);
-    points[5] = data*150/1024;
-    _vmarker->readreg(REG_CAL_X4,&data);
-    points[6] = data*200/1024;
-    _vmarker->readreg(REG_CAL_Y4,&data);
-    points[7] = data*150/1024;
-    for(int i = 0; i < 8; i++){
-        if(points[i] == 0){
-            update = false;
+        if(state == 2){
+            ui->lblCalPoint->setText("P" + QString::number(point+1));
+            ui->lblCalStatus->setText("Calibration running");
+        }else{
+            ui->lblCalPoint->setText(" ");
         }
-        //qDebug() << points[i];
+        if(state == 1){
+           ui->lblCalStatus->setText("Calibration OK");
+        }
     }
-    if(update){
-        if(abs(points[0]-points[2])<abs(points[1]-points[3])){
-            for(int i = 0; i < 8; i+=2){
-                temp = points[i];
-                points[i] = points[i+1];
-                points[i+1] = temp;
+    this->updateCalScreen--;
+    if((this->updateCalScreen)==0){
+        this->updateCalScreen = 10;
+        int points[8] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
+        _vmarker->readreg(REG_CAL_X1,&data);
+        points[0] = data*200/1024;
+        _vmarker->readreg(REG_CAL_Y1,&data);
+        points[1] = data*150/1024;
+        _vmarker->readreg(REG_CAL_X2,&data);
+        points[2] = data*200/1024;
+        _vmarker->readreg(REG_CAL_Y2,&data);
+        points[3] = data*150/1024;
+        _vmarker->readreg(REG_CAL_X3,&data);
+        points[4] = data*200/1024;
+        _vmarker->readreg(REG_CAL_Y3,&data);
+        points[5] = data*150/1024;
+        _vmarker->readreg(REG_CAL_X4,&data);
+        points[6] = data*200/1024;
+        _vmarker->readreg(REG_CAL_Y4,&data);
+        points[7] = data*150/1024;
+
+        x *= 200/1024;
+        y *= 150/1024;
+        for(int i = 0; i < 8; i++){
+            if(points[i] == 0){
+                update = false;
             }
         }
-        if(points[0]>points[2]){
-            for(int i = 0; i < 8; i+=2){
-                points[i] = 200-points[i];
+        if(update){
+            if(abs(points[0]-points[2])<abs(points[1]-points[3])){
+                for(int i = 0; i < 8; i+=2){
+                    temp = points[i];
+                    points[i] = points[i+1];
+                    points[i+1] = temp;
+                }
             }
-        }
-        if(points[1]>points[7]){
-            for(int i = 1; i < 8; i+=2){
-                points[i] = 150-points[i];
+            if(points[0]>points[2]){
+                for(int i = 0; i < 8; i+=2){
+                    points[i] = 200-points[i];
+                }
             }
+            if(points[1]>points[7]){
+                for(int i = 1; i < 8; i+=2){
+                    points[i] = 150-points[i];
+                }
+            }
+            polygon.setPoints(4,points);
+            polygonitem.setPolygon(polygon);
+            numbers_1.setText("1");
+            numbers_1.setPos(points[0],points[1]);
+            numbers_2.setText("2");
+            numbers_2.setPos(points[2],points[3]);
+            numbers_3.setText("3");
+            numbers_3.setPos(points[4],points[5]);
+            numbers_4.setText("4");
+            numbers_4.setPos(points[6],points[7]);
+            //circle.setRect(x,y,2,2);
+            ui->graphicsView->setScene(&scene);
+            ui->graphicsView->show();
+            qDebug() << "Updated view";
         }
-        polygon.setPoints(4,points);
-        polygonitem.setPolygon(polygon);
-        numbers_1.setText("1");
-        numbers_1.setPos(points[0],points[1]);
-        numbers_2.setText("2");
-        numbers_2.setPos(points[2],points[3]);
-        numbers_3.setText("3");
-        numbers_3.setPos(points[4],points[5]);
-        numbers_4.setText("4");
-        numbers_4.setPos(points[6],points[7]);
-        ui->graphicsView->setScene(&scene);
-        ui->graphicsView->show();
-        qDebug() << "Updated view";
     }
+
 }
 
 void VmarkerGUI::updateSensor()
@@ -353,6 +424,14 @@ void VmarkerGUI::saveEeprom()
 }
 
 void VmarkerGUI::startCalibration()
-{
-   _vmarker->startCalibration();
+{        QMessageBox msgBox;
+         msgBox.setText(QString("Calibration?"));
+         msgBox.setInformativeText(QString("Start the calibration?"));
+         msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+         msgBox.setDefaultButton(QMessageBox::Yes);
+         int ret = msgBox.exec();
+         if(ret == QMessageBox::Yes){
+                _vmarker->startCalibration();
+         }
+
 }

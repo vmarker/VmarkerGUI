@@ -1,11 +1,3 @@
-/* VmarkerGUI by Robin Theunis 
- * 2011-2012 
- * For use with the vmarker IR sensor */
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this file,
- * You can obtain one at http://mozilla.org/MPL/2.0/. */
-
 #ifndef VMARKER_H
 #define VMARKER_H
 
@@ -15,16 +7,21 @@
 #include "hidapi/hidapi.h"
 
 #define VID 0x2572
-#define PID 0x0002
-#define INTERFACE 0x01
+#define PID 0xF604
+#define INTERFACE 0x02
 
+const unsigned short PIDlist[] = {0x0002,0x8003};
+const unsigned short MIlist[] = {0x01,0x00};
 
+#define numPIDlist 2
 
 #define REG_MOUSE_ENABLED 0x0F
 #define REG_CALIBRATION_ENABLED 0x0E
 #define REG_MULTITOUCH_ENABLED 0x10
-#define REG_MAC_X_RATIO 0x13
-#define REG_MAC_Y_RATIO 0x14
+#define REG_MAC_X_RATIO 0x14
+#define REG_MAC_Y_RATIO 0x15
+#define REG_KEYBOARD 0x16
+#define REG_ENKEYBOARD 0x17
 #define REG_GAIN1 0x01
 #define REG_GAIN2 0x02
 #define REG_THR 0x03
@@ -59,6 +56,7 @@ public:
     void Start();
     bool getLifeData(unsigned int *X,unsigned int *Y,unsigned int *size);
     bool getMouseState(unsigned char *state , unsigned char *point );
+    unsigned short productID;
 signals:
     void Connected();
     void Disconnect();

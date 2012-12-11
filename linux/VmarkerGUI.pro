@@ -34,7 +34,7 @@ LIBS    += `pkg-config libusb-1.0 libudev --libs`
 
 
 
-
+CONFIG += qt warn_on static
 
 
 
